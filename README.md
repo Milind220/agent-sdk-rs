@@ -1,49 +1,129 @@
 # agent-sdk-rs
 
-Minimal Rust port of the browser-use agent SDK loop.
+`agent-sdk-rs` is a lightweight Rust agent framework inspired by browser-use's SDK design.
 
-Current scope:
-- Anthropic-first provider (`anthropic-ai-sdk`)
-- Agent loop with explicit done semantics (`ToolOutcome::Done`)
+It is intentionally minimal:
+- small surface area
+- explicit control flow
+- simple tool integration
+- easy embedding into Rust binaries
+
+This project is expected to stay lightweight by default. New features should preserve that core philosophy.
+
+## What It Is
+
+A Rust SDK for tool-using agents with:
+- an `Agent` loop
 - `query` + `query_stream`
-- Tool registry with JSON-schema validation
-- Dependency injection + dependency overrides
-- Streaming event model with message + step events
-- Translated Claude-code style tool pack (sandbox/file/search/todo/done)
+- provider adapter boundary
+- tool execution + dependency injection
+- explicit completion semantics via `done`
 
-Not included:
-- Multi-provider adapters (beyond Anthropic)
+## Coverage (v0.1.0 alpha)
+
+Implemented:
+- Anthropic provider adapter (`anthropic-ai-sdk`)
+- `Agent` + builder API
+- `query` and `query_stream`
+- event stream model (`MessageStart`, `StepStart`, `ToolCall`, `ToolResult`, `FinalResponse`, etc.)
+- tool registration with JSON schema
+- dependency map + dependency overrides
+- translated Claude-code-style tool set:
+  - `bash`, `read`, `write`, `edit`
+  - `glob_search`, `grep`
+  - `todo_read`, `todo_write`
+  - `done`
+- optional `claude_code` binary target
+
+Out of scope right now:
+- non-Anthropic providers
 - Laminar integration
 
+## Roadmap
+
+Near-term:
+1. Add xAI Grok provider adapter (next)
+2. Keep adapter trait stable across providers
+3. Improve docs/examples while keeping core small
+
+Non-goal:
+- turning this into a heavy orchestration framework
+
 ## Install
+
+Local path:
 
 ```toml
 [dependencies]
 agent-sdk-rs = { path = "." }
 ```
 
-## Core API
+## Quick Usage
 
-- `Agent::builder()`
-- `Agent::query(...)`
-- `Agent::query_stream(...)`
-- `AgentConfig`
-- `AgentEvent`
-- `ToolSpec`
-- `DependencyMap`
-- `ToolOutcome::{Text, Done}`
+### 1. Basic agent query
 
-## Streaming Events
+```rust
+use agent_sdk_rs::{Agent, AnthropicModel};
 
-`query_stream` emits:
-- `MessageStart` / `MessageComplete`
-- `HiddenUserMessage`
-- `StepStart` / `StepComplete`
-- `Thinking`
-- `Text`
-- `ToolCall`
-- `ToolResult`
-- `FinalResponse`
+let model = AnthropicModel::from_env("claude-sonnet-4-5")?;
+let mut agent = Agent::builder().model(model).build()?;
+
+let answer = agent.query("Hello").await?;
+println!("{answer}");
+# Ok::<(), Box<dyn std::error::Error>>(())
+```
+
+### 2. Streaming events
+
+```rust
+use agent_sdk_rs::{Agent, AgentEvent, AnthropicModel};
+use futures_util::StreamExt;
+
+let model = AnthropicModel::from_env("claude-sonnet-4-5")?;
+let mut agent = Agent::builder().model(model).build()?;
+
+let stream = agent.query_stream("Solve this step by step");
+futures_util::pin_mut!(stream);
+while let Some(event) = stream.next().await {
+    match event? {
+        AgentEvent::ToolCall { tool, .. } => println!("tool: {tool}"),
+        AgentEvent::FinalResponse { content } => println!("final: {content}"),
+        _ => {}
+    }
+}
+# Ok::<(), Box<dyn std::error::Error>>(())
+```
+
+### 3. Claude-code tool pack
+
+```rust
+use agent_sdk_rs::tools::claude_code::{SandboxContext, all_tools};
+use agent_sdk_rs::{Agent, AnthropicModel};
+
+let model = AnthropicModel::from_env("claude-sonnet-4-5")?;
+let sandbox = SandboxContext::create::<std::path::PathBuf>(None)?;
+
+let mut agent = Agent::builder()
+    .model(model)
+    .tools(all_tools())
+    .dependency(sandbox)
+    .require_done_tool(true)
+    .build()?;
+# Ok::<(), Box<dyn std::error::Error>>(())
+```
+
+## Optional Binary
+
+Run the fun Claude-code-like binary:
+
+```bash
+cargo run --features claude-code --bin claude_code -- "list Rust files and summarize"
+```
+
+Environment:
+- `ANTHROPIC_API_KEY` required
+- `ANTHROPIC_MODEL` optional (default set in binary)
+- `CLAUDE_CODE_SANDBOX` optional
 
 ## Examples
 
@@ -52,54 +132,6 @@ cargo run --example local_loop
 cargo run --example di_override
 ```
 
-## Anthropic Setup
-
-```bash
-export ANTHROPIC_API_KEY=...
-export ANTHROPIC_MODEL=claude-sonnet-4-5 # optional in binary example
-```
-
-Rust usage:
-
-```rust
-use agent_sdk_rs::AnthropicModel;
-
-let model = AnthropicModel::from_env("claude-sonnet-4-5")?;
-```
-
-## Claude-Code Tool Pack
-
-Translated toolset lives at:
-- `agent_sdk_rs::tools::claude_code`
-
-Includes:
-- `bash`
-- `read`
-- `write`
-- `edit`
-- `glob_search`
-- `grep`
-- `todo_read`
-- `todo_write`
-- `done`
-
-Convenience registration:
-
-```rust
-use agent_sdk_rs::tools::claude_code::{all_tools, SandboxContext};
-```
-
-## Optional Fun Binary (`claude_code`)
-
-Build/run only when feature is enabled:
-
-```bash
-cargo run --features claude-code --bin claude_code -- "list files and summarize"
-```
-
-Optional env:
-- `CLAUDE_CODE_SANDBOX=/path/to/sandbox`
-
 ## License
 
-MIT (`LICENSE`).
+MIT. See `LICENSE`.
