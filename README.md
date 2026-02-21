@@ -1,4 +1,4 @@
-# rust-sdk
+# agent-sdk-rs
 
 Minimal Rust agent SDK (browser-use style) with:
 - `Agent` loop
@@ -11,7 +11,7 @@ Minimal Rust agent SDK (browser-use style) with:
 
 ```toml
 [dependencies]
-rust-sdk = { path = "./rust-sdk" }
+agent-sdk-rs = { path = "." }
 ```
 
 ## Core API
@@ -41,7 +41,7 @@ export ANTHROPIC_API_KEY=...
 Then construct model via:
 
 ```rust
-use rust_sdk::{AnthropicModel, AnthropicModelConfig};
+use agent_sdk_rs::{AnthropicModel, AnthropicModelConfig};
 
 let model = AnthropicModel::from_env("claude-sonnet-4-5").unwrap();
 // or AnthropicModel::new(AnthropicModelConfig::new(api_key, model_name))

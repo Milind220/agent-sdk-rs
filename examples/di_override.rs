@@ -2,11 +2,11 @@ use std::collections::VecDeque;
 use std::error::Error;
 use std::sync::Mutex;
 
-use async_trait::async_trait;
-use rust_sdk::{
+use agent_sdk_rs::{
     Agent, ChatModel, ModelCompletion, ModelMessage, ModelToolCall, ModelToolChoice,
     ModelToolDefinition, ProviderError, ToolOutcome, ToolSpec,
 };
+use async_trait::async_trait;
 use serde_json::json;
 
 #[derive(Default)]
