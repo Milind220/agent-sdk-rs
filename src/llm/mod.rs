@@ -40,7 +40,7 @@ pub struct ModelToolDefinition {
     pub parameters: Value,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 #[doc(hidden)]
 pub enum ModelToolChoice {
     Auto,
@@ -55,6 +55,14 @@ pub struct ModelCompletion {
     pub text: Option<String>,
     pub thinking: Option<String>,
     pub tool_calls: Vec<ModelToolCall>,
+    pub usage: Option<ModelUsage>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[doc(hidden)]
+pub struct ModelUsage {
+    pub input_tokens: u32,
+    pub output_tokens: u32,
 }
 
 #[async_trait]

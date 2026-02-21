@@ -8,6 +8,7 @@ use async_trait::async_trait;
 use crate::error::ProviderError;
 use crate::llm::{
     ChatModel, ModelCompletion, ModelMessage, ModelToolCall, ModelToolChoice, ModelToolDefinition,
+    ModelUsage,
 };
 
 #[cfg(test)]
@@ -237,6 +238,10 @@ fn normalize_response(response: &CreateMessageResponse) -> ModelCompletion {
         text,
         thinking,
         tool_calls,
+        usage: Some(ModelUsage {
+            input_tokens: response.usage.input_tokens,
+            output_tokens: response.usage.output_tokens,
+        }),
     }
 }
 

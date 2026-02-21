@@ -105,6 +105,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 name: "add".to_string(),
                 arguments: json!({"a": 2, "b": 3}),
             }],
+            usage: None,
         }),
         Ok(ModelCompletion {
             text: None,
@@ -114,6 +115,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 name: "done".to_string(),
                 arguments: json!({"message": "2 + 3 = 5"}),
             }],
+            usage: None,
         }),
     ]);
 
@@ -129,6 +131,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 name: "add".to_string(),
                 arguments: json!({"a": 10, "b": 7}),
             }],
+            usage: None,
         }),
         Ok(ModelCompletion {
             text: None,
@@ -138,6 +141,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 name: "done".to_string(),
                 arguments: json!({"message": "10 + 7 = 17"}),
             }],
+            usage: None,
         }),
     ]);
 
@@ -145,6 +149,24 @@ async fn main() -> Result<(), Box<dyn Error>> {
     futures_util::pin_mut!(stream);
     while let Some(event) = stream.next().await {
         match event? {
+            AgentEvent::MessageStart { message_id, role } => {
+                println!("message start [{message_id}] {role:?}")
+            }
+            AgentEvent::MessageComplete {
+                message_id,
+                content,
+            } => println!("message complete [{message_id}]: {content}"),
+            AgentEvent::HiddenUserMessage { content } => println!("hidden: {content}"),
+            AgentEvent::StepStart {
+                step_id,
+                title,
+                step_number,
+            } => println!("step start [{step_id}] #{step_number} {title}"),
+            AgentEvent::StepComplete {
+                step_id,
+                status,
+                duration_ms,
+            } => println!("step complete [{step_id}] {status:?} ({duration_ms} ms)"),
             AgentEvent::Thinking { content } => println!("thinking: {content}"),
             AgentEvent::Text { content } => println!("text: {content}"),
             AgentEvent::ToolCall {

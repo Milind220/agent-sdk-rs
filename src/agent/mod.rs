@@ -1,20 +1,41 @@
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::Instant;
 
 use async_stream::try_stream;
 use futures_util::{Stream, StreamExt};
+use tokio::time::{Duration, sleep};
 
-use crate::error::{AgentError, ToolError};
+use crate::error::{AgentError, ProviderError, ToolError};
 use crate::llm::{
     ChatModel, ModelCompletion, ModelMessage, ModelToolCall, ModelToolChoice, ModelToolDefinition,
 };
 use crate::tools::{DependencyMap, ToolOutcome, ToolSpec};
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AgentToolChoice {
+    Auto,
+    Required,
+    None,
+    Tool(String),
+}
+
+impl Default for AgentToolChoice {
+    fn default() -> Self {
+        Self::Auto
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct AgentConfig {
     pub require_done_tool: bool,
     pub max_iterations: u32,
     pub system_prompt: Option<String>,
+    pub tool_choice: AgentToolChoice,
+    pub llm_max_retries: u32,
+    pub llm_retry_base_delay_ms: u64,
+    pub llm_retry_max_delay_ms: u64,
+    pub hidden_user_message_prompt: Option<String>,
 }
 
 impl Default for AgentConfig {
@@ -23,12 +44,50 @@ impl Default for AgentConfig {
             require_done_tool: false,
             max_iterations: 24,
             system_prompt: None,
+            tool_choice: AgentToolChoice::Auto,
+            llm_max_retries: 5,
+            llm_retry_base_delay_ms: 1_000,
+            llm_retry_max_delay_ms: 60_000,
+            hidden_user_message_prompt: None,
         }
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AgentRole {
+    User,
+    Assistant,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StepStatus {
+    Completed,
+    Error,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum AgentEvent {
+    MessageStart {
+        message_id: String,
+        role: AgentRole,
+    },
+    MessageComplete {
+        message_id: String,
+        content: String,
+    },
+    HiddenUserMessage {
+        content: String,
+    },
+    StepStart {
+        step_id: String,
+        title: String,
+        step_number: u32,
+    },
+    StepComplete {
+        step_id: String,
+        status: StepStatus,
+        duration_ms: u128,
+    },
     Thinking {
         content: String,
     },
@@ -110,6 +169,28 @@ impl AgentBuilder {
         self
     }
 
+    pub fn tool_choice(mut self, tool_choice: AgentToolChoice) -> Self {
+        self.config.tool_choice = tool_choice;
+        self
+    }
+
+    pub fn llm_retry_config(
+        mut self,
+        max_retries: u32,
+        base_delay_ms: u64,
+        max_delay_ms: u64,
+    ) -> Self {
+        self.config.llm_max_retries = max_retries;
+        self.config.llm_retry_base_delay_ms = base_delay_ms;
+        self.config.llm_retry_max_delay_ms = max_delay_ms;
+        self
+    }
+
+    pub fn hidden_user_message_prompt(mut self, prompt: impl Into<String>) -> Self {
+        self.config.hidden_user_message_prompt = Some(prompt.into());
+        self
+    }
+
     pub fn dependency<T>(self, value: T) -> Self
     where
         T: Send + Sync + 'static,
@@ -170,6 +251,7 @@ impl AgentBuilder {
             dependencies: self.dependencies,
             dependency_overrides: self.dependency_overrides,
             history: Vec::new(),
+            next_message_id: 0,
         })
     }
 }
@@ -182,6 +264,7 @@ pub struct Agent {
     dependencies: DependencyMap,
     dependency_overrides: DependencyMap,
     history: Vec<ModelMessage>,
+    next_message_id: u64,
 }
 
 impl Agent {
@@ -191,10 +274,20 @@ impl Agent {
 
     pub fn clear_history(&mut self) {
         self.history.clear();
+        self.next_message_id = 0;
+    }
+
+    pub fn load_history(&mut self, messages: Vec<ModelMessage>) {
+        self.next_message_id = messages.len() as u64;
+        self.history = messages;
     }
 
     pub fn messages_len(&self) -> usize {
         self.history.len()
+    }
+
+    pub fn messages(&self) -> &[ModelMessage] {
+        &self.history
     }
 
     pub async fn query(&mut self, user_message: impl Into<String>) -> Result<String, AgentError> {
@@ -206,7 +299,12 @@ impl Agent {
         while let Some(event) = stream.next().await {
             match event? {
                 AgentEvent::FinalResponse { content } => final_response = Some(content),
-                AgentEvent::Thinking { .. }
+                AgentEvent::MessageStart { .. }
+                | AgentEvent::MessageComplete { .. }
+                | AgentEvent::HiddenUserMessage { .. }
+                | AgentEvent::StepStart { .. }
+                | AgentEvent::StepComplete { .. }
+                | AgentEvent::Thinking { .. }
                 | AgentEvent::Text { .. }
                 | AgentEvent::ToolCall { .. }
                 | AgentEvent::ToolResult { .. } => {}
@@ -225,12 +323,20 @@ impl Agent {
         try_stream! {
             if self.history.is_empty() {
                 if let Some(system_prompt) = &self.config.system_prompt {
-                    self.history
-                        .push(ModelMessage::System(system_prompt.clone()));
+                    self.history.push(ModelMessage::System(system_prompt.clone()));
                 }
             }
 
-            self.history.push(ModelMessage::User(user_message));
+            let user_message_id = self.next_message_id(AgentRole::User);
+            yield AgentEvent::MessageStart {
+                message_id: user_message_id.clone(),
+                role: AgentRole::User,
+            };
+            self.history.push(ModelMessage::User(user_message.clone()));
+            yield AgentEvent::MessageComplete {
+                message_id: user_message_id,
+                content: user_message,
+            };
 
             let tool_definitions = self
                 .tools
@@ -242,17 +348,19 @@ impl Agent {
                 })
                 .collect::<Vec<_>>();
 
-            let tool_choice = if tool_definitions.is_empty() {
-                ModelToolChoice::None
-            } else {
-                ModelToolChoice::Auto
-            };
+            let tool_choice = self.resolve_tool_choice(!tool_definitions.is_empty());
+            let mut hidden_prompt_injected = false;
 
             for _ in 0..self.config.max_iterations {
                 let completion = self
-                    .model
-                    .invoke(&self.history, &tool_definitions, tool_choice.clone())
+                    .invoke_with_retry(&tool_definitions, tool_choice.clone())
                     .await?;
+
+                let assistant_message_id = self.next_message_id(AgentRole::Assistant);
+                yield AgentEvent::MessageStart {
+                    message_id: assistant_message_id.clone(),
+                    role: AgentRole::Assistant,
+                };
 
                 if let Some(thinking) = completion.thinking.clone() {
                     yield AgentEvent::Thinking { content: thinking };
@@ -268,24 +376,49 @@ impl Agent {
                     }
                 }
 
+                let assistant_content = completion.text.clone().unwrap_or_default();
+                yield AgentEvent::MessageComplete {
+                    message_id: assistant_message_id,
+                    content: assistant_content.clone(),
+                };
+
                 if completion.tool_calls.is_empty() {
                     if !self.config.require_done_tool {
-                        let final_content = completion.text.unwrap_or_default();
+                        if !hidden_prompt_injected {
+                            if let Some(hidden_prompt) = self.config.hidden_user_message_prompt.clone() {
+                                hidden_prompt_injected = true;
+                                self.history.push(ModelMessage::User(hidden_prompt.clone()));
+                                yield AgentEvent::HiddenUserMessage {
+                                    content: hidden_prompt,
+                                };
+                                continue;
+                            }
+                        }
+
                         yield AgentEvent::FinalResponse {
-                            content: final_content,
+                            content: completion.text.unwrap_or_default(),
                         };
                         return;
                     }
                     continue;
                 }
 
+                let mut step_number = 0_u32;
                 for tool_call in completion.tool_calls {
+                    step_number += 1;
+                    yield AgentEvent::StepStart {
+                        step_id: tool_call.id.clone(),
+                        title: tool_call.name.clone(),
+                        step_number,
+                    };
+
                     yield AgentEvent::ToolCall {
                         tool: tool_call.name.clone(),
                         args_json: tool_call.arguments.clone(),
                         tool_call_id: tool_call.id.clone(),
                     };
 
+                    let step_start = Instant::now();
                     let execution = self.execute_tool_call(&tool_call).await;
                     self.history.push(ModelMessage::ToolResult {
                         tool_call_id: tool_call.id.clone(),
@@ -301,6 +434,16 @@ impl Agent {
                         is_error: execution.is_error,
                     };
 
+                    yield AgentEvent::StepComplete {
+                        step_id: tool_call.id.clone(),
+                        status: if execution.is_error {
+                            StepStatus::Error
+                        } else {
+                            StepStatus::Completed
+                        },
+                        duration_ms: step_start.elapsed().as_millis(),
+                    };
+
                     if let Some(done_message) = execution.done_message {
                         yield AgentEvent::FinalResponse {
                             content: done_message,
@@ -314,6 +457,63 @@ impl Agent {
                 max_iterations: self.config.max_iterations,
             })?;
         }
+    }
+
+    fn next_message_id(&mut self, role: AgentRole) -> String {
+        self.next_message_id += 1;
+        let role_label = match role {
+            AgentRole::User => "user",
+            AgentRole::Assistant => "assistant",
+        };
+        format!("msg_{}_{}", self.next_message_id, role_label)
+    }
+
+    fn resolve_tool_choice(&self, has_tools: bool) -> ModelToolChoice {
+        if !has_tools {
+            return ModelToolChoice::None;
+        }
+
+        match &self.config.tool_choice {
+            AgentToolChoice::Auto => ModelToolChoice::Auto,
+            AgentToolChoice::Required => ModelToolChoice::Required,
+            AgentToolChoice::None => ModelToolChoice::None,
+            AgentToolChoice::Tool(name) => ModelToolChoice::Tool(name.clone()),
+        }
+    }
+
+    async fn invoke_with_retry(
+        &self,
+        tool_definitions: &[ModelToolDefinition],
+        tool_choice: ModelToolChoice,
+    ) -> Result<ModelCompletion, AgentError> {
+        let max_retries = self.config.llm_max_retries.max(1);
+        for attempt in 0..max_retries {
+            match self
+                .model
+                .invoke(&self.history, tool_definitions, tool_choice.clone())
+                .await
+            {
+                Ok(completion) => return Ok(completion),
+                Err(err) => {
+                    let should_retry =
+                        is_retryable_provider_error(&err) && (attempt + 1) < max_retries;
+                    if !should_retry {
+                        return Err(AgentError::Provider(err));
+                    }
+
+                    let delay_ms = retry_delay_ms(
+                        attempt,
+                        self.config.llm_retry_base_delay_ms,
+                        self.config.llm_retry_max_delay_ms,
+                    );
+                    sleep(Duration::from_millis(delay_ms)).await;
+                }
+            }
+        }
+
+        Err(AgentError::Config(
+            "retry loop failed unexpectedly".to_string(),
+        ))
     }
 
     fn append_assistant_message(&mut self, completion: &ModelCompletion) {
@@ -355,6 +555,21 @@ impl Agent {
             },
         }
     }
+}
+
+fn is_retryable_provider_error(err: &ProviderError) -> bool {
+    match err {
+        ProviderError::Request(_) => true,
+        ProviderError::Response(_) => false,
+    }
+}
+
+fn retry_delay_ms(attempt: u32, base_delay_ms: u64, max_delay_ms: u64) -> u64 {
+    let mut delay = base_delay_ms;
+    for _ in 0..attempt {
+        delay = delay.saturating_mul(2);
+    }
+    delay.min(max_delay_ms)
 }
 
 fn format_tool_error(err: ToolError) -> String {

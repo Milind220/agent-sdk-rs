@@ -79,6 +79,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 name: "read_dep".to_string(),
                 arguments: json!({}),
             }],
+            usage: None,
         }),
         Ok(ModelCompletion {
             text: None,
@@ -88,6 +89,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 name: "done".to_string(),
                 arguments: json!({"message": "dependency override applied"}),
             }],
+            usage: None,
         }),
     ]);
 
