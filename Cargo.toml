@@ -4,6 +4,12 @@ version = "0.1.0"
 edition = "2024"
 description = "Minimal Rust agent SDK with tool-calling loop and Anthropic adapter"
 license = "MIT"
+readme = "README.md"
+repository = "https://github.com/Milind220/agent-sdk-rs"
+homepage = "https://github.com/Milind220/agent-sdk-rs"
+documentation = "https://docs.rs/agent-sdk-rs"
+keywords = ["agent", "llm", "anthropic", "tools", "sdk"]
+categories = ["asynchronous", "api-bindings"]
 
 [features]
 default = []

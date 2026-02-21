@@ -51,11 +51,9 @@ Non-goal:
 
 ## Install
 
-Local path:
-
 ```toml
 [dependencies]
-agent-sdk-rs = { path = "." }
+agent-sdk-rs = "0.1.0"
 ```
 
 ## Quick Usage
