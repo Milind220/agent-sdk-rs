@@ -3,7 +3,7 @@ use std::path::{Component, Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use glob::glob;
+use glob::Pattern;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -394,23 +394,31 @@ pub fn glob_search_tool() -> ToolSpec {
                     None => ctx.working_dir().to_path_buf(),
                 };
 
-                let query = search_dir.join(&pattern).display().to_string();
-                let entries = match glob(&query) {
-                    Ok(entries) => entries,
+                let pattern = match Pattern::new(&pattern) {
+                    Ok(pattern) => pattern,
                     Err(err) => {
                         return Ok(ToolOutcome::Text(format!("Invalid glob pattern: {err}")));
                     }
                 };
 
                 let mut files = Vec::new();
-                for entry in entries.flatten() {
-                    if !entry.is_file() {
+                for entry in WalkDir::new(&search_dir).into_iter().flatten() {
+                    if !entry.file_type().is_file() {
+                        continue;
+                    }
+
+                    let rel_from_search = match entry.path().strip_prefix(&search_dir) {
+                        Ok(path) => path,
+                        Err(_) => continue,
+                    };
+                    if !pattern.matches_path(rel_from_search) {
                         continue;
                     }
 
                     let shown = entry
+                        .path()
                         .strip_prefix(ctx.root_dir())
-                        .unwrap_or(&entry)
+                        .unwrap_or(entry.path())
                         .display()
                         .to_string();
                     files.push(shown);
