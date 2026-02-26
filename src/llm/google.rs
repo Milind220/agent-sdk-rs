@@ -546,13 +546,15 @@ async fn extract_api_error(response: reqwest::Response) -> String {
 fn clean_gemini_schema(schema: Value) -> Value {
     let mut root = schema;
     let defs = match &mut root {
-        Value::Object(map) => map
-            .remove("$defs")
-            .and_then(|value| match value {
-                Value::Object(defs) => Some(defs),
-                _ => None,
-            })
-            .unwrap_or_default(),
+        Value::Object(map) => {
+            let mut defs = Map::new();
+            for key in ["$defs", "definitions"] {
+                if let Some(Value::Object(found)) = map.remove(key) {
+                    defs.extend(found);
+                }
+            }
+            defs
+        }
         _ => Map::new(),
     };
 
@@ -562,19 +564,23 @@ fn clean_gemini_schema(schema: Value) -> Value {
 
 fn resolve_schema_refs(value: Value, defs: &Map<String, Value>) -> Value {
     match value {
-        Value::Object(map) => {
+        Value::Object(mut map) => {
             if let Some(reference) = map.get("$ref").and_then(Value::as_str) {
                 let ref_name = reference.rsplit('/').next().unwrap_or("");
                 if let Some(definition) = defs.get(ref_name) {
                     let mut resolved = definition.clone();
                     if let Value::Object(ref mut resolved_map) = resolved {
+                        map.remove("$ref");
                         for (key, value) in map {
-                            if key != "$ref" {
-                                resolved_map.insert(key, value);
-                            }
+                            resolved_map.insert(key, value);
                         }
                     }
                     return resolve_schema_refs(resolved, defs);
+                }
+
+                map.remove("$ref");
+                if map.is_empty() {
+                    return json!({"type": "string"});
                 }
             }
 
@@ -833,5 +839,30 @@ mod tests {
             cleaned["properties"]["inner"]["properties"]["_placeholder"]["type"],
             "string"
         );
+    }
+
+    #[test]
+    fn clean_gemini_schema_handles_unresolved_ref_and_legacy_definitions() {
+        let schema = json!({
+            "definitions": {
+                "Legacy": {
+                    "type": "object",
+                    "properties": {
+                        "name": {"type": "string"}
+                    }
+                }
+            },
+            "type": "object",
+            "properties": {
+                "legacy": {"$ref": "#/definitions/Legacy"},
+                "broken": {"$ref": "#/$defs/Unknown"}
+            }
+        });
+
+        let cleaned = clean_gemini_schema(schema);
+
+        assert_eq!(cleaned["properties"]["legacy"]["properties"]["name"]["type"], "string");
+        assert!(cleaned["properties"]["broken"].get("$ref").is_none());
+        assert_eq!(cleaned["properties"]["broken"]["type"], "string");
     }
 }
