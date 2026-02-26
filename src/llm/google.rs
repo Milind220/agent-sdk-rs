@@ -10,6 +10,7 @@ use crate::llm::{
 };
 
 const DEFAULT_API_BASE_URL: &str = "https://generativelanguage.googleapis.com/v1beta";
+const EMPTY_USER_CONTENT_FALLBACK: &str = " ";
 
 #[derive(Debug, Clone)]
 pub struct GoogleModelConfig {
@@ -254,6 +255,7 @@ fn build_request(
     config: &GoogleModelConfig,
 ) -> GenerateContentRequest {
     let (contents, system_instruction) = to_google_contents(messages);
+    let contents = ensure_non_empty_contents(contents);
 
     let tools_payload = if tools.is_empty() {
         None
@@ -330,6 +332,21 @@ fn build_request(
         tool_config,
         generation_config: Some(generation_config),
     }
+}
+
+fn ensure_non_empty_contents(mut contents: Vec<GoogleContent>) -> Vec<GoogleContent> {
+    if contents.is_empty() {
+        contents.push(GoogleContent {
+            role: "user".to_string(),
+            parts: vec![GooglePart {
+                text: Some(EMPTY_USER_CONTENT_FALLBACK.to_string()),
+                thought: None,
+                function_call: None,
+                function_response: None,
+            }],
+        });
+    }
+    contents
 }
 
 fn to_google_contents(messages: &[ModelMessage]) -> (Vec<GoogleContent>, Option<String>) {
@@ -704,6 +721,19 @@ mod tests {
                 .get("additionalProperties")
                 .is_none()
         );
+    }
+
+    #[test]
+    fn build_request_adds_fallback_content_for_empty_user_message() {
+        let messages = vec![ModelMessage::User(String::new())];
+        let config = GoogleModelConfig::new("key", "gemini-2.5-flash");
+
+        let request = build_request(&messages, &[], ModelToolChoice::Auto, &config);
+        let value = serde_json::to_value(request).expect("serializes");
+
+        assert_eq!(value["contents"].as_array().map(|v| v.len()), Some(1));
+        assert_eq!(value["contents"][0]["role"], "user");
+        assert_eq!(value["contents"][0]["parts"][0]["text"], " ");
     }
 
     #[test]
