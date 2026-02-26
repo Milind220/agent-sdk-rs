@@ -1,6 +1,6 @@
 [package]
 name = "agent-sdk-rs"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2024"
 description = "Minimal Rust agent SDK with tool-calling loop and Anthropic/Gemini/Grok adapters"
 license = "MIT"

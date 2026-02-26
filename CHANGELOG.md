@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.2](https://github.com/Milind220/agent-sdk-rs/compare/v0.1.1...v0.1.2) - 2026-02-26
+
+### Added
+
+- *(llm)* add xai grok model adapter
+
+### Fixed
+
+- *(grok)* count top-level reasoning tokens in usage
+- *(grok)* sanitize message order before chat request
+
 ### Added
 
 - add xAI Grok adapter (`GrokModel`) with tool-calling support
