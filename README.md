@@ -23,6 +23,7 @@ A Rust SDK for tool-using agents with:
 
 Implemented:
 - Anthropic provider adapter (`anthropic-ai-sdk`)
+- Google Gemini provider adapter (Google Generative Language API)
 - `Agent` + builder API
 - `query` and `query_stream`
 - event stream model (`MessageStart`, `StepStart`, `ToolCall`, `ToolResult`, `FinalResponse`, etc.)
@@ -36,7 +37,6 @@ Implemented:
 - optional `claude_code` binary target
 
 Out of scope right now:
-- non-Anthropic providers
 - Laminar integration
 
 ## Roadmap
@@ -71,7 +71,20 @@ println!("{answer}");
 # Ok::<(), Box<dyn std::error::Error>>(())
 ```
 
-### 2. Streaming events
+### 2. Google Gemini query
+
+```rust
+use agent_sdk_rs::{Agent, GoogleModel};
+
+let model = GoogleModel::from_env("gemini-2.5-flash")?;
+let mut agent = Agent::builder().model(model).build()?;
+
+let answer = agent.query("Hello").await?;
+println!("{answer}");
+# Ok::<(), Box<dyn std::error::Error>>(())
+```
+
+### 3. Streaming events
 
 ```rust
 use agent_sdk_rs::{Agent, AgentEvent, AnthropicModel};
@@ -92,7 +105,7 @@ while let Some(event) = stream.next().await {
 # Ok::<(), Box<dyn std::error::Error>>(())
 ```
 
-### 3. Claude-code tool pack
+### 4. Claude-code tool pack
 
 ```rust
 use agent_sdk_rs::tools::claude_code::{SandboxContext, all_tools};
@@ -121,6 +134,7 @@ cargo run --features claude-code --bin claude_code -- "list Rust files and summa
 Environment:
 - `ANTHROPIC_API_KEY` required
 - `ANTHROPIC_MODEL` optional (default set in binary)
+- `GOOGLE_API_KEY` or `GEMINI_API_KEY` required for Gemini
 - `CLAUDE_CODE_SANDBOX` optional
 
 ## Examples
