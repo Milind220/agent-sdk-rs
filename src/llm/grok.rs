@@ -210,6 +210,7 @@ struct GrokAssistantMessage {
 struct GrokUsage {
     prompt_tokens: Option<u32>,
     completion_tokens: Option<u32>,
+    reasoning_tokens: Option<u32>,
     completion_tokens_details: Option<GrokCompletionTokenDetails>,
 }
 
@@ -458,12 +459,16 @@ fn normalize_response(
     }
 
     let usage = response.usage.map(|usage| ModelUsage {
+        // xAI may return reasoning tokens either top-level or nested in completion details.
+        // Prefer top-level when present to avoid undercounting and avoid double-counting.
         input_tokens: usage.prompt_tokens.unwrap_or(0),
         output_tokens: usage.completion_tokens.unwrap_or(0).saturating_add(
-            usage
-                .completion_tokens_details
-                .and_then(|details| details.reasoning_tokens)
-                .unwrap_or(0),
+            usage.reasoning_tokens.unwrap_or_else(|| {
+                usage
+                    .completion_tokens_details
+                    .and_then(|details| details.reasoning_tokens)
+                    .unwrap_or(0)
+            }),
         ),
     });
 
@@ -671,6 +676,7 @@ mod tests {
             usage: Some(GrokUsage {
                 prompt_tokens: Some(11),
                 completion_tokens: Some(7),
+                reasoning_tokens: None,
                 completion_tokens_details: Some(GrokCompletionTokenDetails {
                     reasoning_tokens: Some(3),
                 }),
@@ -689,6 +695,37 @@ mod tests {
             Some(ModelUsage {
                 input_tokens: 11,
                 output_tokens: 10,
+            })
+        );
+    }
+
+    #[test]
+    fn normalize_response_prefers_top_level_reasoning_tokens() {
+        let response = GrokChatCompletionResponse {
+            choices: vec![GrokChoice {
+                message: Some(GrokAssistantMessage {
+                    content: Some("answer".to_string()),
+                    tool_calls: Vec::new(),
+                    reasoning_content: None,
+                }),
+            }],
+            usage: Some(GrokUsage {
+                prompt_tokens: Some(11),
+                completion_tokens: Some(7),
+                reasoning_tokens: Some(4),
+                completion_tokens_details: Some(GrokCompletionTokenDetails {
+                    reasoning_tokens: Some(3),
+                }),
+            }),
+        };
+
+        let completion = normalize_response(response).expect("response normalizes");
+
+        assert_eq!(
+            completion.usage,
+            Some(ModelUsage {
+                input_tokens: 11,
+                output_tokens: 11,
             })
         );
     }
