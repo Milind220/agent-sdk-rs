@@ -144,6 +144,24 @@ cargo run --example local_loop
 cargo run --example di_override
 ```
 
+## Releases (release-plz)
+
+Releases are automated via GitHub Actions + `release-plz`.
+
+- Workflow: `.github/workflows/release-plz.yml`
+- Config: `release-plz.toml`
+- Required secret: `CARGO_REGISTRY_TOKEN`
+
+Behavior:
+- `feat:`, `fix:`, `perf:`, `refactor:`, `revert:`, `build:` commits on `main` can trigger/update a release PR.
+- `docs:` and `chore:` do not trigger a release PR by default.
+
+Flow:
+1. Merge releasable commits to `main`.
+2. release-plz opens/updates a release PR.
+3. Merge that release PR.
+4. release-plz publishes crates, creates tags, and creates GitHub releases.
+
 ## License
 
 MIT. See `LICENSE`.
