@@ -357,13 +357,71 @@ fn to_grok_messages(messages: &[ModelMessage]) -> Vec<GrokRequestMessage> {
 }
 
 fn ensure_non_empty_messages(mut messages: Vec<GrokRequestMessage>) -> Vec<GrokRequestMessage> {
-    if messages.is_empty() {
-        messages.push(GrokRequestMessage::User {
-            content: EMPTY_USER_CONTENT_FALLBACK.to_string(),
-        });
+    let mut normalized = Vec::with_capacity(messages.len().saturating_add(1));
+    let mut pending_tool_call_ids = Vec::<String>::new();
+
+    for message in messages.drain(..) {
+        match message {
+            GrokRequestMessage::System { content } => {
+                pending_tool_call_ids.clear();
+                normalized.push(GrokRequestMessage::System { content });
+            }
+            GrokRequestMessage::User { content } => {
+                pending_tool_call_ids.clear();
+                normalized.push(GrokRequestMessage::User { content });
+            }
+            GrokRequestMessage::Assistant {
+                content,
+                tool_calls,
+            } => {
+                pending_tool_call_ids.clear();
+                if let Some(calls) = &tool_calls {
+                    pending_tool_call_ids.extend(calls.iter().map(|call| call.id.clone()));
+                }
+                normalized.push(GrokRequestMessage::Assistant {
+                    content,
+                    tool_calls,
+                });
+            }
+            GrokRequestMessage::Tool {
+                tool_call_id,
+                content,
+            } => {
+                if let Some(position) = pending_tool_call_ids
+                    .iter()
+                    .position(|id| id == &tool_call_id)
+                {
+                    pending_tool_call_ids.remove(position);
+                    normalized.push(GrokRequestMessage::Tool {
+                        tool_call_id,
+                        content,
+                    });
+                }
+            }
+        }
     }
 
-    messages
+    if normalized.is_empty() {
+        normalized.push(GrokRequestMessage::User {
+            content: EMPTY_USER_CONTENT_FALLBACK.to_string(),
+        });
+        return normalized;
+    }
+
+    let starts_with_valid_role = matches!(
+        normalized.first(),
+        Some(GrokRequestMessage::System { .. } | GrokRequestMessage::User { .. })
+    );
+    if !starts_with_valid_role {
+        normalized.insert(
+            0,
+            GrokRequestMessage::User {
+                content: EMPTY_USER_CONTENT_FALLBACK.to_string(),
+            },
+        );
+    }
+
+    normalized
 }
 
 fn normalize_response(
@@ -539,6 +597,58 @@ mod tests {
         assert_eq!(value["messages"][0]["content"], " ");
         assert!(value.get("tools").is_none());
         assert!(value.get("tool_choice").is_none());
+    }
+
+    #[test]
+    fn build_request_inserts_fallback_and_drops_orphan_tool_messages() {
+        let messages = vec![ModelMessage::ToolResult {
+            tool_call_id: "call_1".to_string(),
+            tool_name: "lookup".to_string(),
+            content: "result".to_string(),
+            is_error: false,
+        }];
+        let config = GrokModelConfig::new("key", "grok-4-1-fast-reasoning");
+
+        let request = build_request(&messages, &[], ModelToolChoice::Auto, &config);
+        let value = serde_json::to_value(request).expect("serializes");
+
+        assert_eq!(
+            value["messages"].as_array().map(|values| values.len()),
+            Some(1)
+        );
+        assert_eq!(value["messages"][0]["role"], "user");
+        assert_eq!(value["messages"][0]["content"], " ");
+    }
+
+    #[test]
+    fn build_request_inserts_fallback_when_first_message_is_assistant() {
+        let messages = vec![
+            ModelMessage::User(String::new()),
+            ModelMessage::Assistant {
+                content: Some("Calling tool".to_string()),
+                tool_calls: vec![ModelToolCall {
+                    id: "call_1".to_string(),
+                    name: "lookup".to_string(),
+                    arguments: json!({"query": "rust"}),
+                }],
+            },
+            ModelMessage::ToolResult {
+                tool_call_id: "call_1".to_string(),
+                tool_name: "lookup".to_string(),
+                content: "{\"result\":\"ok\"}".to_string(),
+                is_error: false,
+            },
+        ];
+        let config = GrokModelConfig::new("key", "grok-4-1-fast-reasoning");
+
+        let request = build_request(&messages, &[], ModelToolChoice::Auto, &config);
+        let value = serde_json::to_value(request).expect("serializes");
+
+        assert_eq!(value["messages"][0]["role"], "user");
+        assert_eq!(value["messages"][0]["content"], " ");
+        assert_eq!(value["messages"][1]["role"], "assistant");
+        assert_eq!(value["messages"][2]["role"], "tool");
+        assert_eq!(value["messages"][2]["tool_call_id"], "call_1");
     }
 
     #[test]
