@@ -1,4 +1,5 @@
 mod anthropic;
+mod google;
 
 use async_trait::async_trait;
 use serde_json::Value;
@@ -6,6 +7,7 @@ use serde_json::Value;
 use crate::error::ProviderError;
 
 pub use anthropic::{AnthropicModel, AnthropicModelConfig};
+pub use google::{GoogleModel, GoogleModelConfig};
 
 #[derive(Clone, Debug, PartialEq)]
 #[doc(hidden)]
