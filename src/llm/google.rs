@@ -2,6 +2,7 @@ use async_trait::async_trait;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
+use std::collections::HashSet;
 
 use crate::error::ProviderError;
 use crate::llm::{
@@ -563,37 +564,60 @@ fn clean_gemini_schema(schema: Value) -> Value {
 }
 
 fn resolve_schema_refs(value: Value, defs: &Map<String, Value>) -> Value {
+    let mut active_refs = HashSet::new();
+    resolve_schema_refs_inner(value, defs, &mut active_refs)
+}
+
+fn resolve_schema_refs_inner(
+    value: Value,
+    defs: &Map<String, Value>,
+    active_refs: &mut HashSet<String>,
+) -> Value {
     match value {
         Value::Object(mut map) => {
-            if let Some(reference) = map.get("$ref").and_then(Value::as_str) {
-                let ref_name = reference.rsplit('/').next().unwrap_or("");
-                if let Some(definition) = defs.get(ref_name) {
-                    let mut resolved = definition.clone();
-                    if let Value::Object(ref mut resolved_map) = resolved {
+            if let Some(reference) = map
+                .get("$ref")
+                .and_then(Value::as_str)
+                .map(ToString::to_string)
+            {
+                let ref_name = reference.rsplit('/').next().unwrap_or("").to_string();
+                if let Some(definition) = defs.get(&ref_name) {
+                    if active_refs.contains(&ref_name) {
                         map.remove("$ref");
-                        for (key, value) in map {
-                            resolved_map.insert(key, value);
+                        if map.is_empty() {
+                            return json!({"type": "string"});
                         }
+                    } else {
+                        active_refs.insert(ref_name.clone());
+                        let mut resolved = definition.clone();
+                        if let Value::Object(ref mut resolved_map) = resolved {
+                            map.remove("$ref");
+                            for (key, value) in map {
+                                resolved_map.insert(key, value);
+                            }
+                        }
+                        let output = resolve_schema_refs_inner(resolved, defs, active_refs);
+                        active_refs.remove(&ref_name);
+                        return output;
                     }
-                    return resolve_schema_refs(resolved, defs);
-                }
-
-                map.remove("$ref");
-                if map.is_empty() {
-                    return json!({"type": "string"});
+                } else {
+                    map.remove("$ref");
+                    if map.is_empty() {
+                        return json!({"type": "string"});
+                    }
                 }
             }
 
             let mut out = Map::new();
             for (key, value) in map {
-                out.insert(key, resolve_schema_refs(value, defs));
+                out.insert(key, resolve_schema_refs_inner(value, defs, active_refs));
             }
             Value::Object(out)
         }
         Value::Array(values) => Value::Array(
             values
                 .into_iter()
-                .map(|value| resolve_schema_refs(value, defs))
+                .map(|value| resolve_schema_refs_inner(value, defs, active_refs))
                 .collect(),
         ),
         other => other,
@@ -864,5 +888,28 @@ mod tests {
         assert_eq!(cleaned["properties"]["legacy"]["properties"]["name"]["type"], "string");
         assert!(cleaned["properties"]["broken"].get("$ref").is_none());
         assert_eq!(cleaned["properties"]["broken"]["type"], "string");
+    }
+
+    #[test]
+    fn clean_gemini_schema_handles_circular_refs_without_recursing_forever() {
+        let schema = json!({
+            "$defs": {
+                "Node": {
+                    "type": "object",
+                    "properties": {
+                        "next": { "$ref": "#/$defs/Node" }
+                    }
+                }
+            },
+            "type": "object",
+            "properties": {
+                "root": { "$ref": "#/$defs/Node" }
+            }
+        });
+
+        let cleaned = clean_gemini_schema(schema);
+
+        assert!(cleaned["properties"]["root"].get("$ref").is_none());
+        assert_eq!(cleaned["properties"]["root"]["properties"]["next"]["type"], "string");
     }
 }
