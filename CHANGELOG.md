@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- add xAI Grok adapter (`GrokModel`) with tool-calling support
+
 ## [0.1.1](https://github.com/Milind220/agent-sdk-rs/compare/v0.1.0...v0.1.1) - 2026-02-26
 
 ### Added

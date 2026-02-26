@@ -6,6 +6,7 @@
 //! - Tool registry + JSON schema validation + dependency injection
 //! - Anthropic adapter via `AnthropicModel`
 //! - Google Gemini adapter via `GoogleModel`
+//! - xAI Grok adapter via `GrokModel`
 //! - Claude-code style tool pack under `tools::claude_code`
 
 pub mod agent;
@@ -19,7 +20,8 @@ pub use agent::{
 };
 pub use error::{AgentError, ProviderError, SchemaError, ToolError};
 pub use llm::{
-    AnthropicModel, AnthropicModelConfig, ChatModel, GoogleModel, GoogleModelConfig,
-    ModelCompletion, ModelMessage, ModelToolCall, ModelToolChoice, ModelToolDefinition, ModelUsage,
+    AnthropicModel, AnthropicModelConfig, ChatModel, GoogleModel, GoogleModelConfig, GrokModel,
+    GrokModelConfig, ModelCompletion, ModelMessage, ModelToolCall, ModelToolChoice,
+    ModelToolDefinition, ModelUsage,
 };
 pub use tools::{DependencyMap, ToolOutcome, ToolSpec};
