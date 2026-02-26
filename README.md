@@ -24,6 +24,7 @@ A Rust SDK for tool-using agents with:
 Implemented:
 - Anthropic provider adapter (`anthropic-ai-sdk`)
 - Google Gemini provider adapter (Google Generative Language API)
+- xAI Grok provider adapter (xAI Chat Completions API)
 - `Agent` + builder API
 - `query` and `query_stream`
 - event stream model (`MessageStart`, `StepStart`, `ToolCall`, `ToolResult`, `FinalResponse`, etc.)
@@ -42,7 +43,7 @@ Out of scope right now:
 ## Roadmap
 
 Near-term:
-1. Add xAI Grok provider adapter (next)
+1. Keep xAI/Anthropic/Google adapter trait behavior consistent
 2. Keep adapter trait stable across providers
 3. Improve docs/examples while keeping core small
 
@@ -105,7 +106,20 @@ while let Some(event) = stream.next().await {
 # Ok::<(), Box<dyn std::error::Error>>(())
 ```
 
-### 4. Claude-code tool pack
+### 4. xAI Grok query
+
+```rust
+use agent_sdk_rs::{Agent, GrokModel};
+
+let model = GrokModel::from_env("grok-4-1-fast-reasoning")?;
+let mut agent = Agent::builder().model(model).build()?;
+
+let answer = agent.query("Hello").await?;
+println!("{answer}");
+# Ok::<(), Box<dyn std::error::Error>>(())
+```
+
+### 5. Claude-code tool pack
 
 ```rust
 use agent_sdk_rs::tools::claude_code::{SandboxContext, all_tools};
@@ -135,6 +149,7 @@ Environment:
 - `ANTHROPIC_API_KEY` required
 - `ANTHROPIC_MODEL` optional (default set in binary)
 - `GOOGLE_API_KEY` or `GEMINI_API_KEY` required for Gemini
+- `XAI_API_KEY` (or `GROK_API_KEY`) required for Grok
 - `CLAUDE_CODE_SANDBOX` optional
 
 ## Examples

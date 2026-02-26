@@ -2,13 +2,13 @@
 name = "agent-sdk-rs"
 version = "0.1.1"
 edition = "2024"
-description = "Minimal Rust agent SDK with tool-calling loop and Anthropic/Gemini adapters"
+description = "Minimal Rust agent SDK with tool-calling loop and Anthropic/Gemini/Grok adapters"
 license = "MIT"
 readme = "README.md"
 repository = "https://github.com/Milind220/agent-sdk-rs"
 homepage = "https://github.com/Milind220/agent-sdk-rs"
 documentation = "https://docs.rs/agent-sdk-rs"
-keywords = ["agent", "llm", "anthropic", "gemini", "sdk"]
+keywords = ["agent", "llm", "anthropic", "gemini", "grok"]
 categories = ["asynchronous", "api-bindings"]
 
 [features]
