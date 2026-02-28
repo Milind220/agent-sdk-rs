@@ -1,5 +1,7 @@
 # agent-sdk-rs
 
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/Milind220/agent-sdk-rs)
+
 `agent-sdk-rs` is a lightweight Rust agent framework inspired by browser-use's SDK design.
 
 It is intentionally minimal:
