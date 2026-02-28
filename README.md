@@ -50,6 +50,12 @@ Near-term:
 Non-goal:
 - turning this into a heavy orchestration framework
 
+## Documentation Status (Alpha)
+
+- We currently focus docs on the core API surface (`Agent`, query APIs, provider adapters, tool primitives).
+- If you enable `missing_docs` linting globally, you will see many warnings on secondary/public-for-now items.
+- This crate is still alpha; some currently `pub` items exist for development convenience and may become private or reshaped before `1.0`.
+
 ## Install
 
 ```toml

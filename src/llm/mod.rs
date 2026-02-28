@@ -70,7 +70,9 @@ pub struct ModelUsage {
 }
 
 #[async_trait]
+/// Provider abstraction used by [`crate::Agent`].
 pub trait ChatModel: Send + Sync {
+    /// Invokes one model completion step for the current message history.
     async fn invoke(
         &self,
         messages: &[ModelMessage],
