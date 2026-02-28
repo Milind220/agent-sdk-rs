@@ -58,6 +58,23 @@ Non-goal:
 - If you enable `missing_docs` linting globally, you will see many warnings on secondary/public-for-now items.
 - This crate is still alpha; some currently `pub` items exist for development convenience and may become private or reshaped before `1.0`.
 
+## Guide Docs (mdBook)
+
+- Guide index (GitHub Pages): `https://milind220.github.io/agent-sdk-rs/`
+- API reference (docs.rs): `https://docs.rs/agent-sdk-rs`
+
+Build locally:
+
+```bash
+mdbook build docs
+```
+
+Serve locally:
+
+```bash
+mdbook serve docs --open
+```
+
 ## Install
 
 ```toml
