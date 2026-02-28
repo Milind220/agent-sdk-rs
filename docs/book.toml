@@ -1,0 +1,15 @@
+[book]
+title = "agent-sdk-rs"
+authors = ["KiForge Contributors"]
+language = "en"
+src = "src"
+
+[output.html]
+default-theme = "rust"
+preferred-dark-theme = "navy"
+git-repository-url = "https://github.com/Milind220/agent-sdk-rs"
+edit-url-template = "https://github.com/Milind220/agent-sdk-rs/edit/main/docs/{path}"
+site-url = "/agent-sdk-rs/"
+
+[build]
+create-missing = false
