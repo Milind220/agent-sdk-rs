@@ -1,6 +1,6 @@
 [package]
 name = "agent-sdk-rs"
-version = "0.1.2"
+version = "0.1.3"
 edition = "2024"
 description = "Pure-Rust agent SDK for production tool-calling loops, multi-provider, type-safe, and ergonomic"
 license = "MIT"
