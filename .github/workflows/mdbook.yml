@@ -23,8 +23,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: dtolnay/rust-toolchain@stable
-
       - uses: peaceiris/actions-mdbook@v2
         with:
           mdbook-version: latest
