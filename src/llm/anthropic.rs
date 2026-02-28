@@ -17,18 +17,28 @@ use anthropic_ai_sdk::types::message::ContentBlockDelta;
 use anthropic_ai_sdk::types::message::{MessageStartContent, StopReason, StreamEvent};
 
 #[derive(Debug, Clone)]
+/// Runtime configuration for [`AnthropicModel`].
 pub struct AnthropicModelConfig {
+    /// Anthropic API key.
     pub api_key: String,
+    /// Model id (for example `claude-sonnet-4-5`).
     pub model: String,
+    /// Anthropic API version header value.
     pub api_version: String,
+    /// Optional base URL override for proxies or compatible endpoints.
     pub api_base_url: Option<String>,
+    /// Maximum output tokens per call.
     pub max_tokens: u32,
+    /// Optional sampling temperature.
     pub temperature: Option<f32>,
+    /// Optional nucleus sampling parameter.
     pub top_p: Option<f32>,
+    /// Optional budget for extended thinking tokens.
     pub thinking_budget_tokens: Option<usize>,
 }
 
 impl AnthropicModelConfig {
+    /// Creates a config with sensible defaults.
     pub fn new(api_key: impl Into<String>, model: impl Into<String>) -> Self {
         Self {
             api_key: api_key.into(),
@@ -44,12 +54,14 @@ impl AnthropicModelConfig {
 }
 
 #[derive(Debug, Clone)]
+/// Anthropic provider adapter implementing [`ChatModel`].
 pub struct AnthropicModel {
     client: AnthropicClient,
     config: AnthropicModelConfig,
 }
 
 impl AnthropicModel {
+    /// Creates a model adapter from explicit config.
     pub fn new(config: AnthropicModelConfig) -> Result<Self, ProviderError> {
         let mut builder =
             AnthropicClient::builder(config.api_key.clone(), config.api_version.clone());
@@ -64,6 +76,7 @@ impl AnthropicModel {
         Ok(Self { client, config })
     }
 
+    /// Creates a model adapter using `ANTHROPIC_API_KEY` from the environment.
     pub fn from_env(model: impl Into<String>) -> Result<Self, ProviderError> {
         let api_key = std::env::var("ANTHROPIC_API_KEY")
             .map_err(|_| ProviderError::Request("ANTHROPIC_API_KEY is not set".to_string()))?;

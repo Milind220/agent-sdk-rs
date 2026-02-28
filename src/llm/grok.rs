@@ -13,16 +13,24 @@ const DEFAULT_API_BASE_URL: &str = "https://api.x.ai/v1";
 const EMPTY_USER_CONTENT_FALLBACK: &str = " ";
 
 #[derive(Debug, Clone)]
+/// Runtime configuration for [`GrokModel`].
 pub struct GrokModelConfig {
+    /// xAI API key.
     pub api_key: String,
+    /// Model id (for example `grok-4-1-fast-reasoning`).
     pub model: String,
+    /// Optional base URL override.
     pub api_base_url: Option<String>,
+    /// Optional sampling temperature.
     pub temperature: Option<f32>,
+    /// Optional nucleus sampling parameter.
     pub top_p: Option<f32>,
+    /// Optional max output tokens.
     pub max_tokens: Option<u32>,
 }
 
 impl GrokModelConfig {
+    /// Creates a config with sensible defaults.
     pub fn new(api_key: impl Into<String>, model: impl Into<String>) -> Self {
         Self {
             api_key: api_key.into(),
@@ -36,12 +44,14 @@ impl GrokModelConfig {
 }
 
 #[derive(Debug, Clone)]
+/// xAI Grok provider adapter implementing [`ChatModel`].
 pub struct GrokModel {
     client: Client,
     config: GrokModelConfig,
 }
 
 impl GrokModel {
+    /// Creates a model adapter from explicit config.
     pub fn new(config: GrokModelConfig) -> Result<Self, ProviderError> {
         let client = Client::builder()
             .build()
@@ -50,6 +60,7 @@ impl GrokModel {
         Ok(Self { client, config })
     }
 
+    /// Creates a model adapter using `XAI_API_KEY` or `GROK_API_KEY`.
     pub fn from_env(model: impl Into<String>) -> Result<Self, ProviderError> {
         let api_key = std::env::var("XAI_API_KEY")
             .or_else(|_| std::env::var("GROK_API_KEY"))

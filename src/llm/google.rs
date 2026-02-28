@@ -14,18 +14,28 @@ const DEFAULT_API_BASE_URL: &str = "https://generativelanguage.googleapis.com/v1
 const EMPTY_USER_CONTENT_FALLBACK: &str = " ";
 
 #[derive(Debug, Clone)]
+/// Runtime configuration for [`GoogleModel`].
 pub struct GoogleModelConfig {
+    /// Google API key.
     pub api_key: String,
+    /// Model id (for example `gemini-2.5-flash`).
     pub model: String,
+    /// Optional base URL override.
     pub api_base_url: Option<String>,
+    /// Optional sampling temperature.
     pub temperature: Option<f32>,
+    /// Optional nucleus sampling parameter.
     pub top_p: Option<f32>,
+    /// Optional max output tokens.
     pub max_output_tokens: Option<u32>,
+    /// Optional reasoning/thinking token budget.
     pub thinking_budget_tokens: Option<u32>,
+    /// Whether to include thought parts in responses when supported.
     pub include_thoughts: Option<bool>,
 }
 
 impl GoogleModelConfig {
+    /// Creates a config with sensible defaults.
     pub fn new(api_key: impl Into<String>, model: impl Into<String>) -> Self {
         Self {
             api_key: api_key.into(),
@@ -41,12 +51,14 @@ impl GoogleModelConfig {
 }
 
 #[derive(Debug, Clone)]
+/// Google Gemini provider adapter implementing [`ChatModel`].
 pub struct GoogleModel {
     client: Client,
     config: GoogleModelConfig,
 }
 
 impl GoogleModel {
+    /// Creates a model adapter from explicit config.
     pub fn new(config: GoogleModelConfig) -> Result<Self, ProviderError> {
         let client = Client::builder()
             .build()
@@ -55,6 +67,7 @@ impl GoogleModel {
         Ok(Self { client, config })
     }
 
+    /// Creates a model adapter using `GOOGLE_API_KEY` or `GEMINI_API_KEY`.
     pub fn from_env(model: impl Into<String>) -> Result<Self, ProviderError> {
         let api_key = std::env::var("GOOGLE_API_KEY")
             .or_else(|_| std::env::var("GEMINI_API_KEY"))
