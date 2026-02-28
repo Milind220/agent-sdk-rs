@@ -506,8 +506,9 @@ pub fn grep_tool() -> ToolSpec {
                                 .strip_prefix(ctx.root_dir())
                                 .unwrap_or(entry.path())
                                 .display();
-                            let line_preview = if line.len() > 100 {
-                                format!("{}...", &line[..100])
+                            let line_preview = if line.chars().count() > 100 {
+                                let truncated = line.chars().take(100).collect::<String>();
+                                format!("{truncated}...")
                             } else {
                                 line.to_string()
                             };
